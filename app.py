@@ -155,7 +155,16 @@ def main():
 
         st.subheader("입력값으로 점수 예측하기")
 
-        gender = st.selectbox("Gender", sorted(df["gender"].unique()))
+        if "gender" not in st.session_state:
+    st.session_state.gender = sorted(df["gender"].unique())[0]
+
+st.session_state.gender = st.selectbox(
+    "Gender",
+    sorted(df["gender"].unique()),
+    index=sorted(df["gender"].unique()).index(st.session_state.gender),
+    key="gender"
+)
+
         race = st.selectbox("Race/Ethnicity", sorted(df["race_ethnicity"].unique()))
         pedu = st.selectbox("Parent Education", sorted(df["parental_level_of_education"].unique()))
         lunch = st.selectbox("Lunch", sorted(df["lunch"].unique()))
