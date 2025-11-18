@@ -10,12 +10,13 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import r2_score, mean_squared_error
 
 
-# -------------------------------------------
-# 1) CSV 파일 자동 로딩 + 컬럼명 자동 정규화
-# -------------------------------------------
+# ===============================
+# 1) CSV 파일 불러오기 + 컬럼명 통일
+# ===============================
 def load_dataset():
     possible_files = [
         "StudentsPerformance.csv",
+        "StudentsPerformance_clean.csv",
         "StudentsPerformance_1000rows_synthetic.csv",
         "students.csv",
     ]
@@ -31,12 +32,12 @@ def load_dataset():
 
     if df is None:
         st.error(
-            "CSV 파일을 찾을 수 없습니다.\n"
-            "app.py와 같은 위치에 'StudentsPerformance.csv' 또는 synthetic CSV를 올려주세요."
+            "CSV 파일을 찾을 수 없습니다. "
+            "app.py와 같은 위치에 CSV 파일을 넣어주세요."
         )
         st.stop()
 
-    # 컬럼명 매핑 — 어떤 형태든 표준 이름으로 통일
+    # 컬럼명 통일
     rename_map = {
         "race/ethnicity": "race_ethnicity",
         "race ethnicity": "race_ethnicity",
@@ -80,9 +81,9 @@ def load_dataset():
     return df
 
 
-# -------------------------------------------
-# 2) 모델 학습 함수 — RMSE 수동 계산으로 모든 버전 호환
-# -------------------------------------------
+# ===============================
+# 2) 모델 학습 함수
+# ===============================
 def train_single_target(df, target):
     features = [
         "gender",
@@ -95,7 +96,6 @@ def train_single_target(df, target):
     X = df[features]
     y = df[target]
 
-    # 범주형 변수 인코딩
     preprocessor = ColumnTransformer(
         transformers=[("cat", OneHotEncoder(handle_unknown="ignore"), features)],
         remainder="drop",
@@ -119,68 +119,110 @@ def train_single_target(df, target):
     pipe.fit(X_train, y_train)
 
     preds = pipe.predict(X_test)
-
-    # RMSE 계산 (squared=False 사용 안 함 — 모든 sklearn 버전 호환)
     rmse = np.sqrt(mean_squared_error(y_test, preds))
     r2 = r2_score(y_test, preds)
 
     return pipe, rmse, r2
 
 
-# -------------------------------------------
-# Streamlit UI
-# -------------------------------------------
-def main():
-    st.title("📊 학생 성적 예측기 (Random Forest) — 완전한 안정 버전")
-    st.write("CSV 파일만 넣으면 자동으로 돌아가는 안전한 버전입니다.")
+# ===============================
+# 3) Session State 초기화
+# ===============================
 
+def init_session_state(df):
+    defaults = {
+        "gender": df["gender"].unique()[0],
+        "race_ethnicity": df["race_ethnicity"].unique()[0],
+        "parental_level_of_education": df["parental_level_of_education"].unique()[0],
+        "lunch": df["lunch"].unique()[0],
+        "test_preparation_course": df["test_preparation_course"].unique()[0],
+    }
+
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+
+# ===============================
+# 4) Streamlit UI
+# ===============================
+def main():
+    st.title("📊 안정적 학생 성적 예측기 (Session-State 적용)")
+    st.write("값이 초기화되지 않고, CSV만 넣으면 자동으로 동작합니다.")
+
+    # 1) 데이터 불러오기
     df = load_dataset()
+
+    # 2) Session State 초기화
+    init_session_state(df)
 
     st.subheader("데이터 미리보기")
     st.dataframe(df.head())
 
+    # 예측할 대상 선택
     target_col = st.selectbox(
         "예측할 과목을 선택하세요",
-        ["math_score", "reading_score", "writing_score"]
+        ["math_score", "reading_score", "writing_score"],
+        key="target_col"
     )
 
-    if st.button("모델 학습 & 성능 평가"):
-        st.info("모델 학습 중...")
-
+    # 모델 학습 버튼
+    if st.button("모델 학습 및 성능 평가"):
         model, rmse, r2 = train_single_target(df, target_col)
 
-        st.success("학습 완료!")
+        st.success("모델 학습 완료!")
         st.write(f"**RMSE:** {rmse:.3f}")
         st.write(f"**R²:** {r2:.3f}")
 
-        st.subheader("입력값으로 점수 예측하기")
+        st.subheader("값을 선택해서 점수 예측하기")
 
-        if "gender" not in st.session_state:
-    st.session_state.gender = sorted(df["gender"].unique())[0]
+        # Session-State 기반 선택 UI
+        st.session_state.gender = st.selectbox(
+            "Gender",
+            sorted(df["gender"].unique()),
+            index=sorted(df["gender"].unique()).index(st.session_state.gender),
+            key="gender"
+        )
 
-st.session_state.gender = st.selectbox(
-    "Gender",
-    sorted(df["gender"].unique()),
-    index=sorted(df["gender"].unique()).index(st.session_state.gender),
-    key="gender"
-)
+        st.session_state.race_ethnicity = st.selectbox(
+            "Race/Ethnicity",
+            sorted(df["race_ethnicity"].unique()),
+            index=sorted(df["race_ethnicity"].unique()).index(st.session_state.race_ethnicity),
+            key="race_ethnicity"
+        )
 
-        race = st.selectbox("Race/Ethnicity", sorted(df["race_ethnicity"].unique()))
-        pedu = st.selectbox("Parent Education", sorted(df["parental_level_of_education"].unique()))
-        lunch = st.selectbox("Lunch", sorted(df["lunch"].unique()))
-        prep = st.selectbox("Test Preparation", sorted(df["test_preparation_course"].unique()))
+        st.session_state.parental_level_of_education = st.selectbox(
+            "Parent Education",
+            sorted(df["parental_level_of_education"].unique()),
+            index=sorted(df["parental_level_of_education"].unique()).index(st.session_state.parental_level_of_education),
+            key="parental_level_of_education"
+        )
+
+        st.session_state.lunch = st.selectbox(
+            "Lunch",
+            sorted(df["lunch"].unique()),
+            index=sorted(df["lunch"].unique()).index(st.session_state.lunch),
+            key="lunch"
+        )
+
+        st.session_state.test_preparation_course = st.selectbox(
+            "Test Preparation",
+            sorted(df["test_preparation_course"].unique()),
+            index=sorted(df["test_preparation_course"].unique()).index(st.session_state.test_preparation_course),
+            key="test_preparation_course"
+        )
 
         if st.button("점수 예측하기"):
             input_df = pd.DataFrame([{
-                "gender": gender,
-                "race_ethnicity": race,
-                "parental_level_of_education": pedu,
-                "lunch": lunch,
-                "test_preparation_course": prep,
+                "gender": st.session_state.gender,
+                "race_ethnicity": st.session_state.race_ethnicity,
+                "parental_level_of_education": st.session_state.parental_level_of_education,
+                "lunch": st.session_state.lunch,
+                "test_preparation_course": st.session_state.test_preparation_course,
             }])
 
-            pred_score = model.predict(input_df)[0]
-            st.success(f"예측된 {target_col}: **{pred_score:.2f} 점**")
+            pred = model.predict(input_df)[0]
+            st.success(f"예측된 {target_col}: **{pred:.2f} 점**")
 
 
 if __name__ == "__main__":
